@@ -29,6 +29,15 @@ const ASCII_CHARS: Chars = Chars {
     indent: "    ",
 };
 
+/// Read-only rendering context threaded through the recursive traversal.
+struct RenderCtx<'a> {
+    proc_map: &'a HashMap<i32, Process>,
+    children: &'a HashMap<i32, Vec<i32>>,
+    visible: &'a HashSet<i32>,
+    chars: &'a Chars,
+    opts: &'a RenderOptions,
+}
+
 pub fn render(
     proc_map: &HashMap<i32, Process>,
     children: &HashMap<i32, Vec<i32>>,
@@ -36,23 +45,25 @@ pub fn render(
     root: i32,
     opts: &RenderOptions,
 ) -> String {
-    let chars = if opts.ascii { &ASCII_CHARS } else { &UTF8_CHARS };
+    let chars = if opts.ascii {
+        &ASCII_CHARS
+    } else {
+        &UTF8_CHARS
+    };
+    let ctx = RenderCtx {
+        proc_map,
+        children,
+        visible,
+        chars,
+        opts,
+    };
     let mut out = String::with_capacity(4096);
-    render_node(proc_map, children, visible, root, &[], chars, opts, &mut out);
+    render_node(&ctx, root, &[], &mut out);
     out
 }
 
-fn render_node(
-    proc_map: &HashMap<i32, Process>,
-    children: &HashMap<i32, Vec<i32>>,
-    visible: &HashSet<i32>,
-    pid: i32,
-    prefix_stack: &[bool], // true = more siblings follow at this level
-    chars: &Chars,
-    opts: &RenderOptions,
-    out: &mut String,
-) {
-    let p = match proc_map.get(&pid) {
+fn render_node(ctx: &RenderCtx<'_>, pid: i32, prefix_stack: &[bool], out: &mut String) {
+    let p = match ctx.proc_map.get(&pid) {
         Some(p) => p,
         None => return,
     };
@@ -62,14 +73,22 @@ fn render_node(
     for (i, &has_more) in prefix_stack.iter().enumerate() {
         if i == prefix_stack.len() - 1 {
             // Last level: draw branch connector.
-            prefix.push_str(if has_more { chars.branch } else { chars.last });
+            prefix.push_str(if has_more {
+                ctx.chars.branch
+            } else {
+                ctx.chars.last
+            });
         } else {
-            prefix.push_str(if has_more { chars.pipe } else { chars.indent });
+            prefix.push_str(if has_more {
+                ctx.chars.pipe
+            } else {
+                ctx.chars.indent
+            });
         }
     }
 
     let line = format!("{}{} {}", prefix, p.pid, p.name);
-    let line = match opts.width {
+    let line = match ctx.opts.width {
         Some(w) if w > 0 => truncate_to_width(&line, w),
         _ => line,
     };
@@ -77,9 +96,15 @@ fn render_node(
     out.push('\n');
 
     // Collect visible children in sorted order.
-    let visible_children: Vec<i32> = children
+    let visible_children: Vec<i32> = ctx
+        .children
         .get(&pid)
-        .map(|kids| kids.iter().copied().filter(|c| visible.contains(c)).collect())
+        .map(|kids| {
+            kids.iter()
+                .copied()
+                .filter(|c| ctx.visible.contains(c))
+                .collect()
+        })
         .unwrap_or_default();
 
     let n = visible_children.len();
@@ -87,7 +112,7 @@ fn render_node(
         let has_more = i < n - 1;
         let mut next_stack = prefix_stack.to_vec();
         next_stack.push(has_more);
-        render_node(proc_map, children, visible, child, &next_stack, chars, opts, out);
+        render_node(ctx, child, &next_stack, out);
     }
 }
 
@@ -108,7 +133,12 @@ mod tests {
     use crate::process::Process;
 
     fn make_proc(pid: i32, ppid: i32, name: &str) -> Process {
-        Process { pid, ppid, uid: 0, name: name.to_string() }
+        Process {
+            pid,
+            ppid,
+            uid: 0,
+            name: name.to_string(),
+        }
     }
 
     fn make_tree() -> (HashMap<i32, Process>, HashMap<i32, Vec<i32>>, HashSet<i32>) {
@@ -126,7 +156,10 @@ mod tests {
     #[test]
     fn utf8_tree_structure() {
         let (pm, ch, visible) = make_tree();
-        let opts = RenderOptions { ascii: false, width: None };
+        let opts = RenderOptions {
+            ascii: false,
+            width: None,
+        };
         let out = render(&pm, &ch, &visible, 1, &opts);
         assert!(out.contains("├─"), "should use UTF-8 branch char");
         assert!(out.contains("└─"), "should use UTF-8 last char");
@@ -137,7 +170,10 @@ mod tests {
     #[test]
     fn ascii_tree_structure() {
         let (pm, ch, visible) = make_tree();
-        let opts = RenderOptions { ascii: true, width: None };
+        let opts = RenderOptions {
+            ascii: true,
+            width: None,
+        };
         let out = render(&pm, &ch, &visible, 1, &opts);
         assert!(out.contains("|--"), "should use ASCII branch char");
     }
@@ -145,7 +181,10 @@ mod tests {
     #[test]
     fn truncation_applied() {
         let (pm, ch, visible) = make_tree();
-        let opts = RenderOptions { ascii: false, width: Some(10) };
+        let opts = RenderOptions {
+            ascii: false,
+            width: Some(10),
+        };
         let out = render(&pm, &ch, &visible, 1, &opts);
         for line in out.lines() {
             assert!(line.chars().count() <= 10, "line too long: {:?}", line);
@@ -155,7 +194,10 @@ mod tests {
     #[test]
     fn pid_and_name_on_each_line() {
         let (pm, ch, visible) = make_tree();
-        let opts = RenderOptions { ascii: false, width: None };
+        let opts = RenderOptions {
+            ascii: false,
+            width: None,
+        };
         let out = render(&pm, &ch, &visible, 1, &opts);
         assert!(out.contains("2 logd"));
         assert!(out.contains("4 worker"));

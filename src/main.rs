@@ -65,7 +65,10 @@ fn main() {
         terminal_width().or(Some(80))
     };
 
-    let opts = RenderOptions { ascii: args.ascii, width };
+    let opts = RenderOptions {
+        ascii: args.ascii,
+        width,
+    };
     let output = render(&proc_map, &children, &visible, args.root_pid, &opts);
     print!("{}", output);
 }

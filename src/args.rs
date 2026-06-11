@@ -28,7 +28,10 @@ pub fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Args, ParseE
     // Skip program name.
     argv.next();
 
-    let mut args = Args { root_pid: 1, ..Default::default() };
+    let mut args = Args {
+        root_pid: 1,
+        ..Default::default()
+    };
 
     let argv: Vec<String> = argv.collect();
     let mut i = 0;
@@ -43,7 +46,9 @@ pub fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Args, ParseE
             }
             "-p" => {
                 i += 1;
-                let val = argv.get(i).ok_or_else(|| ParseError("-p requires a pid".into()))?;
+                let val = argv
+                    .get(i)
+                    .ok_or_else(|| ParseError("-p requires a pid".into()))?;
                 args.pid_filter = Some(
                     val.parse::<i32>()
                         .map_err(|_| ParseError(format!("invalid pid: {}", val)))?,
@@ -51,12 +56,16 @@ pub fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Args, ParseE
             }
             "-u" => {
                 i += 1;
-                let val = argv.get(i).ok_or_else(|| ParseError("-u requires a username".into()))?;
+                let val = argv
+                    .get(i)
+                    .ok_or_else(|| ParseError("-u requires a username".into()))?;
                 args.user_filter = Some(val.clone());
             }
             "-l" => {
                 i += 1;
-                let val = argv.get(i).ok_or_else(|| ParseError("-l requires a number".into()))?;
+                let val = argv
+                    .get(i)
+                    .ok_or_else(|| ParseError("-l requires a number".into()))?;
                 args.max_depth = Some(
                     val.parse::<usize>()
                         .map_err(|_| ParseError(format!("invalid depth: {}", val)))?,

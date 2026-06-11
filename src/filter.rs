@@ -34,8 +34,8 @@ pub fn visible_pids(
             Some(p) => p,
             None => continue,
         };
-        let pid_match = pid_filter.map_or(true, |f| f == pid);
-        let user_match = user_filter.map_or(true, |f| f == p.uid);
+        let pid_match = pid_filter.is_none_or(|f| f == pid);
+        let user_match = user_filter.is_none_or(|f| f == p.uid);
         if pid_match && user_match {
             matching.insert(pid);
         }
@@ -117,7 +117,12 @@ mod tests {
     use crate::process::Process;
 
     fn make_proc(pid: i32, ppid: i32, uid: u32) -> Process {
-        Process { pid, ppid, uid, name: format!("proc{}", pid) }
+        Process {
+            pid,
+            ppid,
+            uid,
+            name: format!("proc{}", pid),
+        }
     }
 
     fn make_tree() -> (HashMap<i32, Process>, HashMap<i32, Vec<i32>>) {

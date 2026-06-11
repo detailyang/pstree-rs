@@ -93,7 +93,12 @@ pub fn collect_processes() -> Result<Vec<Process>, String> {
         let nul = comm.iter().position(|&b| b == 0).unwrap_or(MAXCOMLEN + 1);
         let name = String::from_utf8_lossy(&comm[..nul]).into_owned();
 
-        processes.push(Process { pid, ppid, uid, name });
+        processes.push(Process {
+            pid,
+            ppid,
+            uid,
+            name,
+        });
     }
 
     Ok(processes)
@@ -102,9 +107,7 @@ pub fn collect_processes() -> Result<Vec<Process>, String> {
 /// Build adjacency maps from a flat process list.
 /// Returns (pid->Process, pid->sorted children pids).
 /// Orphan processes (ppid not in pid set) are re-parented to pid 1.
-pub fn build_tree(
-    processes: Vec<Process>,
-) -> (HashMap<i32, Process>, HashMap<i32, Vec<i32>>) {
+pub fn build_tree(processes: Vec<Process>) -> (HashMap<i32, Process>, HashMap<i32, Vec<i32>>) {
     let pid_set: std::collections::HashSet<i32> = processes.iter().map(|p| p.pid).collect();
 
     let mut proc_map: HashMap<i32, Process> = HashMap::with_capacity(processes.len());
@@ -140,7 +143,12 @@ mod tests {
     use super::*;
 
     fn make_proc(pid: i32, ppid: i32) -> Process {
-        Process { pid, ppid, uid: 0, name: format!("proc{}", pid) }
+        Process {
+            pid,
+            ppid,
+            uid: 0,
+            name: format!("proc{}", pid),
+        }
     }
 
     #[test]
