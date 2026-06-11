@@ -22,6 +22,57 @@ const OFFSET_PPID: usize = 560;
 const OFFSET_UID: usize = 420;
 const MAXCOMLEN: usize = 16;
 
+/// Attempt to read the full executable path for `pid` via KERN_PROCARGS2 and
+/// return its basename. Returns None if the call fails (e.g. permission denied
+/// for system processes owned by root) — callers should fall back to p_comm.
+#[cfg(target_os = "macos")]
+fn procargs2_name(pid: i32) -> Option<String> {
+    let mut mib: [libc::c_int; 3] = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    let mut size: libc::size_t = 0;
+
+    let ret = unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            3,
+            std::ptr::null_mut(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ret != 0 || size < 4 {
+        return None;
+    }
+
+    let mut buf: Vec<u8> = vec![0u8; size];
+    let ret = unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            3,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ret != 0 {
+        return None;
+    }
+
+    // Layout: [argc: i32][exec_path: null-terminated string][padding][argv...]
+    // We only need exec_path.
+    let exec_path = &buf[4..];
+    let nul = exec_path.iter().position(|&b| b == 0)?;
+    if nul == 0 {
+        return None;
+    }
+    let path = std::str::from_utf8(&exec_path[..nul]).ok()?;
+
+    // Return the basename only (last path component).
+    let basename = path.rsplit('/').next().filter(|s| !s.is_empty())?;
+    Some(basename.to_owned())
+}
+
 /// Collect all processes via sysctl(KERN_PROC_ALL).
 #[cfg(target_os = "macos")]
 pub fn collect_processes() -> Result<Vec<Process>, String> {
@@ -91,7 +142,10 @@ pub fn collect_processes() -> Result<Vec<Process>, String> {
 
         let comm = &entry[OFFSET_COMM..OFFSET_COMM + MAXCOMLEN + 1];
         let nul = comm.iter().position(|&b| b == 0).unwrap_or(MAXCOMLEN + 1);
-        let name = String::from_utf8_lossy(&comm[..nul]).into_owned();
+        let comm_name = String::from_utf8_lossy(&comm[..nul]).into_owned();
+
+        // Try KERN_PROCARGS2 for the full argv[0] basename; fall back to p_comm.
+        let name = procargs2_name(pid).unwrap_or(comm_name);
 
         processes.push(Process {
             pid,
