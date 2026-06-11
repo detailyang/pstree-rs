@@ -1,0 +1,15 @@
+[package]
+name = "pstree-rs"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pstree-rs"
+path = "src/main.rs"
+
+[lib]
+name = "pstree"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "0.2"
