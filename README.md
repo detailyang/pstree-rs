@@ -17,8 +17,8 @@ $ pstree-rs -p $$
 └─ 2544 tmux new-session -s main
    └─ 24398 -fish
       └─ 2526 pi
-         └─ 32279 bash -c pstree-rs -p $$
-            └─ 32280 pstree-rs -p 32279
+         └─ 32463 /bin/bash -c cd ~/pstree-rs && ./target/release/pstree-rs -p $$
+            └─ 32464 ./target/release/pstree-rs -p 32463
 ```
 
 ```
@@ -30,7 +30,8 @@ $ pstree-rs --ascii -l 2
 |-- 98 systemstats
 |   \-- 409 systemstats
 |-- 102 configd
-|   \-- 3851 eapolclient
+|   \-- 3851 /System/Library/SystemConfiguration/EAPOLController.bundle/Contents/Resources/eapolclient -i en0 -u 601 -g 20
+|-- 104 powerd
 ...
 ```
 
