@@ -22,11 +22,11 @@ const OFFSET_PPID: usize = 560;
 const OFFSET_UID: usize = 420;
 const MAXCOMLEN: usize = 16;
 
-/// Attempt to read the full executable path for `pid` via KERN_PROCARGS2 and
-/// return its basename. Returns None if the call fails (e.g. permission denied
-/// for system processes owned by root) — callers should fall back to p_comm.
+/// Read the full command line for `pid` via KERN_PROCARGS2 and return
+/// argv joined by spaces (e.g. "tmux attach-session -t main").
+/// Returns None on permission error or any parse failure; callers fall back to p_comm.
 #[cfg(target_os = "macos")]
-fn procargs2_name(pid: i32) -> Option<String> {
+fn procargs2_cmdline(pid: i32) -> Option<String> {
     let mut mib: [libc::c_int; 3] = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
     let mut size: libc::size_t = 0;
 
@@ -45,12 +45,13 @@ fn procargs2_name(pid: i32) -> Option<String> {
     }
 
     let mut buf: Vec<u8> = vec![0u8; size];
+    let mut buf_size = size;
     let ret = unsafe {
         libc::sysctl(
             mib.as_mut_ptr(),
             3,
             buf.as_mut_ptr() as *mut libc::c_void,
-            &mut size,
+            &mut buf_size,
             std::ptr::null_mut(),
             0,
         )
@@ -58,19 +59,49 @@ fn procargs2_name(pid: i32) -> Option<String> {
     if ret != 0 {
         return None;
     }
+    buf.truncate(buf_size);
 
-    // Layout: [argc: i32][exec_path: null-terminated string][padding][argv...]
-    // We only need exec_path.
-    let exec_path = &buf[4..];
-    let nul = exec_path.iter().position(|&b| b == 0)?;
-    if nul == 0 {
+    // Layout: [argc: i32][exec_path\0][null padding][argv[0]\0][argv[1]\0]...
+    if buf.len() < 4 {
         return None;
     }
-    let path = std::str::from_utf8(&exec_path[..nul]).ok()?;
+    let argc = i32::from_ne_bytes(buf[..4].try_into().unwrap());
+    if argc <= 0 {
+        return None;
+    }
 
-    // Return the basename only (last path component).
-    let basename = path.rsplit('/').next().filter(|s| !s.is_empty())?;
-    Some(basename.to_owned())
+    let mut p = &buf[4..];
+
+    // Skip exec_path.
+    let nul = p.iter().position(|&b| b == 0)?;
+    p = &p[nul + 1..];
+
+    // Skip null padding between exec_path and argv.
+    let non_null = p.iter().position(|&b| b != 0)?;
+    p = &p[non_null..];
+
+    // Collect argv[0..argc].
+    let mut args: Vec<&str> = Vec::with_capacity(argc as usize);
+    for _ in 0..argc {
+        if p.is_empty() {
+            break;
+        }
+        let nul = p.iter().position(|&b| b == 0).unwrap_or(p.len());
+        if let Ok(s) = std::str::from_utf8(&p[..nul]) {
+            if !s.is_empty() {
+                args.push(s);
+            }
+        }
+        if nul + 1 >= p.len() {
+            break;
+        }
+        p = &p[nul + 1..];
+    }
+
+    if args.is_empty() {
+        return None;
+    }
+    Some(args.join(" "))
 }
 
 /// Collect all processes via sysctl(KERN_PROC_ALL).
@@ -144,8 +175,8 @@ pub fn collect_processes() -> Result<Vec<Process>, String> {
         let nul = comm.iter().position(|&b| b == 0).unwrap_or(MAXCOMLEN + 1);
         let comm_name = String::from_utf8_lossy(&comm[..nul]).into_owned();
 
-        // Try KERN_PROCARGS2 for the full argv[0] basename; fall back to p_comm.
-        let name = procargs2_name(pid).unwrap_or(comm_name);
+        // Try KERN_PROCARGS2 for the full argv joined by spaces; fall back to p_comm.
+        let name = procargs2_cmdline(pid).unwrap_or(comm_name);
 
         processes.push(Process {
             pid,
