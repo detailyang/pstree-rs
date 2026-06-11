@@ -11,7 +11,7 @@ fn main() {
     let args = match parse_args(std::env::args()) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("pstree-rs: {}", e);
             eprintln!("{}", usage());
             std::process::exit(1);
         }

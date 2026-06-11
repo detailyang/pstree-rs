@@ -30,6 +30,7 @@ pub fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Args, ParseE
 
     let mut args = Args {
         root_pid: 1,
+        wide: true,
         ..Default::default()
     };
 
@@ -72,7 +73,8 @@ pub fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Args, ParseE
                 );
             }
             "-h" | "--help" => {
-                return Err(ParseError(usage()));
+                print!("{}", usage());
+                std::process::exit(0);
             }
             s if s.starts_with('-') => {
                 return Err(ParseError(format!("unknown flag: {}\n{}", s, usage())));
@@ -98,7 +100,7 @@ Options:
   -p pid     show only branches containing pid
   -u user    show only branches containing processes owned by user
   -l depth   limit tree depth
-  -w         wide output, no truncation
+  -w         wide output, no truncation (default: on)
   --ascii    use ASCII tree characters
   -h         show this help"
         .to_string()
@@ -116,7 +118,7 @@ mod tests {
     fn defaults() {
         let a = parse("pstree-rs").unwrap();
         assert_eq!(a.root_pid, 1);
-        assert!(!a.wide);
+        assert!(a.wide);
         assert!(!a.ascii);
         assert!(a.pid_filter.is_none());
         assert!(a.user_filter.is_none());
