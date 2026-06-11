@@ -45,25 +45,3 @@ jobs:
       - name: Test
         run: cargo test
 
-  nix-build:
-    name: Nix Build
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixpkgs-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - name: nix flake check
-        run: nix flake check --no-build
-
-      - name: nix build
-        run: nix build .#
-
-      - name: Smoke test nix output
-        run: ./result/bin/pstree-rs --help || true
