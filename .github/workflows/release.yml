@@ -10,15 +10,8 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: macos-13
-            target: x86_64-apple-darwin
+    name: Build universal binaries
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +19,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -35,24 +28,28 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-universal-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-cargo-
+            ${{ runner.os }}-cargo-universal-
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Build aarch64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin
 
       - name: Package
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf pstree-rs-${{ github.ref_name }}-${{ matrix.target }}.tar.gz pstree-rs
-          mv pstree-rs-${{ github.ref_name }}-${{ matrix.target }}.tar.gz $GITHUB_WORKSPACE/
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            tar czf pstree-rs-${{ github.ref_name }}-${target}.tar.gz \
+              -C target/${target}/release pstree-rs
+          done
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pstree-rs-${{ matrix.target }}
-          path: pstree-rs-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          name: pstree-rs-binaries
+          path: pstree-rs-${{ github.ref_name }}-*.tar.gz
 
   release:
     name: Create Release
@@ -68,8 +65,8 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
+          name: pstree-rs-binaries
           path: artifacts
-          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
